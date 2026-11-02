@@ -37,18 +37,22 @@ html,body{margin:0;background:#FBF5E6;color:#3B5218;font-family:-apple-system,"S
   var t0 = Date.now(), touched = false, shown = false;
   ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) { addEventListener(ev, function () { touched = true; }, { once: true, passive: true }); });
 
-  /* Góp ý gửi thẳng vào Google Sheet (thay cho google.script.run của bản Google) */
-  var h = {};
-  var run = {
-    withSuccessHandler: function (f) { h.s = f; return run; },
-    withFailureHandler: function (f) { h.f = f; return run; },
-    guiGopY: function (g) {
-      var s = h.s, f = h.f; h = {};
-      fetch(API, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(g) })
-        .then(function () { s && s(true); }, function (e) { f && f(e); });
-    }
-  };
-  window.google = { script: { run: run } };
+  /* Gọi các chức năng ở Google (góp ý, quản trị) — thay cho google.script.run của bản Google */
+  function runner(h) {
+    return new Proxy({}, {
+      get: function (_, k) {
+        if (k === 'withSuccessHandler') return function (f) { return runner({ s: f, f: h.f }); };
+        if (k === 'withFailureHandler') return function (f) { return runner({ s: h.s, f: f }); };
+        return function (arg) {
+          fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: k, arg: arg }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { if (j && j.ok) { h.s && h.s(j.data); } else { h.f && h.f(new Error((j && j.loi) || 'Lỗi')); } },
+                  function (e) { h.f && h.f(e); });
+        };
+      }
+    });
+  }
+  window.google = { script: { run: runner({}) } };
 
   function ls(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
